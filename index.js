@@ -43,14 +43,26 @@ async function run() {
 
     const usersCollection = client.db("ShareWithTheir").collection("users");
 
-    //token Generate
-    // app.post("/jwt", async (req, res) => {
-    //   const user = req.body;
-    //   const token = jwt.sign(user, process.env.ACCESS_TOKEN, {
-    //     expiresIn: "1h",
-    //   });
-    //   res.send({ token });
-    // });
+
+
+
+    app.get("/user/:emailOrPhone", async (req, res) => {
+        const { emailOrPhone } = req.params;
+        
+        let user;
+        if (emailOrPhone.includes("@")) {
+          user = await usersCollection.findOne({ Email: emailOrPhone });
+        } else {
+          user = await usersCollection.findOne({ Phone: emailOrPhone });
+        }
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
+        res.send(user);
+      });
+  
+
+
 
     // Register User
     app.post("/register", async (req, res) => {
@@ -73,7 +85,6 @@ async function run() {
     // Login User
     app.post("/login", async (req, res) => {
       const info = req.body;
-      // return console.log(info);
       let user;
       if (info?.emailOrPhone.includes("@")) {
         user = await usersCollection.findOne({ Email: info?.emailOrPhone });
@@ -94,20 +105,8 @@ async function run() {
         expiresIn: "1h",
       });
 
-      res.send({user,token });
+      res.send({ user, token });
     });
-
-
-
-
-
-
-
-
-
-
-
-
 
     app.get("/", (req, res) => {
       res.send("ShareWithTheir server is running");
