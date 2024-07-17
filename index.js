@@ -42,27 +42,119 @@ async function run() {
     await client.connect();
 
     const usersCollection = client.db("ShareWithTheir").collection("users");
+    const transactionCollection = client
+      .db("ShareWithTheir")
+      .collection("Total-Transaction");
 
+    // ========================= All Get Request =======================================
 
-
-
+    //On Auth Observer Set
     app.get("/user/:emailOrPhone", async (req, res) => {
-        const { emailOrPhone } = req.params;
-        
-        let user;
-        if (emailOrPhone.includes("@")) {
-          user = await usersCollection.findOne({ Email: emailOrPhone });
-        } else {
-          user = await usersCollection.findOne({ Phone: emailOrPhone });
-        }
-        if (!user) {
-          return res.status(404).send({ message: "User not found" });
-        }
-        res.send(user);
+      const { emailOrPhone } = req.params;
+
+      let user;
+      if (emailOrPhone.includes("@")) {
+        user = await usersCollection.findOne({ Email: emailOrPhone });
+      } else {
+        user = await usersCollection.findOne({ Phone: emailOrPhone });
+      }
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+      res.send(user);
+    });
+
+    //Transaction History
+    app.get("/Transaction", async (req, res) => {
+      const result = await transactionCollection.find().toArray();
+      res.send(result);
+    });
+
+    // ========================= All Post Request =============================
+    //send money
+    app.post("/send-money", async (req, res) => {
+      const info = req.body;
+
+      // Validate amount
+      const amount = parseFloat(info?.amount);
+      if (amount < 50) {
+        return res
+          .status(400)
+          .send({ message: "Minimum transaction amount is 50 Taka" });
+      }
+
+      // Find sender and receiver
+      const sender = await usersCollection.findOne({
+        Email: info?.user?.Email,
       });
-  
 
+      let receiver;
+      if (info?.receiver.includes("@")) {
+        receiver = await usersCollection.findOne({
+          Email: info?.receiver,
+        });
+      } else {
+        receiver = await usersCollection.findOne({
+          Phone: info?.receiver,
+        });
+      }
 
+      if (!sender || !receiver) {
+        return res
+          .status(404)
+          .send({ message: "Sender or receiver not found" });
+      }
+
+      // Verify PIN
+      const isPinMatch = await bcrypt.compare(info?.pin, sender?.Pin);
+      if (!isPinMatch) {
+        return res.status(400).send({ message: "Invalid PIN" });
+      }
+      // Calculate fee and total deduction
+
+      let fee = 0;
+      if (amount > 100) {
+        fee = 5;
+      }
+      const totalDeduction = amount + fee;
+
+      // Check sender's balance
+
+      if (sender.Balance < totalDeduction) {
+        return res.status(400).send({ message: "Insufficient balance" });
+      }
+
+      // Update balances
+      await usersCollection.updateOne(
+        { _id: new ObjectId(sender?._id) },
+        { $inc: { Balance: -totalDeduction } }
+      );
+      await usersCollection.updateOne(
+        { _id: new ObjectId(receiver?._id) },
+        { $inc: { Balance: +amount } }
+      );
+
+      //set transaction history
+      const doc = {
+        Sender: {
+          Name: sender.Name,
+          Email: sender.Email,
+          Phone: sender.Phone,
+          Sended_Amount: amount,
+          Fee: totalDeduction - amount,
+          time: new Date(),
+        },
+        Receiver: {
+          Name: receiver.Name,
+          Email: receiver.Email,
+          Phone: receiver.Phone,
+          Received_Amount: amount,
+          time: new Date(),
+        },
+      };
+      await transactionCollection.insertOne(doc);
+      res.send({ message: "Transaction successful" });
+    });
 
     // Register User
     app.post("/register", async (req, res) => {
@@ -76,6 +168,7 @@ async function run() {
         Phone: userInfo.phone,
         Pin: hashedPin,
         Status: userInfo.status,
+        Role: userInfo.role,
         Balance: userInfo.balance,
       };
       await usersCollection.insertOne(newUser);
