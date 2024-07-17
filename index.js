@@ -45,7 +45,7 @@ async function run() {
     const transactionCollection = client
       .db("ShareWithTheir")
       .collection("Total-Transaction");
-      const requestCollection = client
+    const requestCollection = client
       .db("ShareWithTheir")
       .collection("RequestWithAgent");
 
@@ -79,12 +79,106 @@ async function run() {
       }
     });
 
-    app.get('/Transaction-Management/:email', async (req,res)=>{
-      const {email} = req.params;
-      const query = {Agent:email}
+    app.get("/Transaction-Management/:email", async (req, res) => {
+      const { email } = req.params;
+      const query = { Agent: email };
       const result = await requestCollection.find(query).toArray();
       res.send(result);
-    })
+    });
+    // ========================= All Patch Request ============================
+    // Cash Outed Request
+    app.patch("/requested-cash-out", async (req, res) => {
+      const info = req.body;
+      const user = await usersCollection.findOne({ Email: info.Email });
+      const agent = await usersCollection.findOne({ Email: info.Agent });
+
+      if (!user || !agent) {
+        return res.status(404).send({ message: "User or Agent Not Found" });
+      }
+
+      //updated balance
+      await usersCollection.updateOne(
+        { _id: new ObjectId(user?._id) },
+        { $inc: { Balance: -info?.Cash_Outed_Amount } }
+      );
+      await usersCollection.updateOne(
+        { _id: new ObjectId(agent?._id) },
+        { $inc: { Balance: +info?.Cash_Outed_Amount } }
+      );
+
+      //add to history
+      const doc = {
+        Sender: {
+          Name: user.Name,
+          Email: user.Email,
+          Phone: user.Phone,
+          Cashed_Out_Amount: info?.Cash_Outed_Amount,
+          Fee: (1.5 / info?.Cash_Outed_Amount) * 100,
+          time: new Date().toLocaleString(),
+        },
+        Receiver: {
+          Name: agent.Name,
+          Email: agent.Email,
+          Phone: agent.Phone,
+          Received_Amount: info?.Cash_Outed_Amount,
+          time: new Date().toLocaleString(),
+        },
+      };
+
+      await transactionCollection.insertOne(doc);
+
+      //delete request
+      await requestCollection.deleteOne({ _id: new ObjectId(info._id) });
+      res.send({ message: "Cash Out Approve Successfully" });
+    });
+
+    app.patch("/requested-cash-in", async (req, res) => {
+      const info = req.body;
+
+      const user = await usersCollection.findOne({ Email: info.Email });
+      const agent = await usersCollection.findOne({ Email: info.Agent });
+
+      if (!user || !agent) {
+        return res.status(404).send({ message: "User or Agent Not Found" });
+      }
+      try {
+        await usersCollection.updateOne(
+          { Email: info.Email },
+          { $inc: { Balance: +info?.Requested_Amount } }
+        );
+        await usersCollection.updateOne(
+          { Email: info.Agent },
+          { $inc: { Balance: -info?.Requested_Amount } }
+        );
+
+        //add to history
+        const doc = {
+          Sender: {
+            Name: agent.Name,
+            Email: agent.Email,
+            Phone: agent.Phone,
+            Cashed_Out_Amount: info?.Requested_Amount,
+            Fee: 0,
+            time: new Date().toLocaleString(),
+          },
+          Receiver: {
+            Name: user.Name,
+            Email: user.Email,
+            Phone: user.Phone,
+            Received_Amount: info?.Requested_Amount,
+            time: new Date().toLocaleString(),
+          },
+        };
+
+        await transactionCollection.insertOne(doc);
+
+        //delete form history
+        await requestCollection.deleteOne({ _id: new ObjectId(info._id) });
+        res.send({ message: "Cash In Request Approve Successful" });
+      } catch (error) {
+        res.status(404).send({ message: error.message });
+      }
+    });
     // ========================= All Post Request =============================
     //send money
     app.post("/send-money", async (req, res) => {
@@ -118,6 +212,10 @@ async function run() {
         return res
           .status(404)
           .send({ message: "Sender or receiver not found" });
+      }
+
+      if (sender?.Email === receiver?.Email) {
+        return res.status(404).send({ message: "Something Wrong" });
       }
 
       // Verify PIN
@@ -171,8 +269,7 @@ async function run() {
       res.send({ message: "Transaction successful" });
     });
 
-
-    //This is Cash Out Query 
+    //Cash Out
     app.post("/cash-out", async (req, res) => {
       const info = req.body;
       // Find user and agent;
@@ -185,7 +282,7 @@ async function run() {
       }
 
       const user = await usersCollection.findOne({ Email: info.user?.Email });
-   
+
       let agent;
       if (info?.agent.includes("@")) {
         agent = await usersCollection.findOne({ Email: info?.agent });
@@ -210,7 +307,7 @@ async function run() {
       }
 
       // Calculate fee and total deduction
-      const fee = amount * 0.015;
+      const fee = (amount / 100) * 1.5;
       const totalDeduction = amount + fee;
 
       // Check user's balance
@@ -218,51 +315,24 @@ async function run() {
       if (user.Balance < totalDeduction) {
         return res.status(400).send({ message: "Insufficient balance" });
       }
-      // Update balances
-
-
-      // await usersCollection.updateOne(
-      //   { _id: new ObjectId(user?._id) },
-      //   { $inc: { Balance: -totalDeduction } }
-      // );
-      // await usersCollection.updateOne(
-      //   { _id: new ObjectId(agent?._id) },
-      //   { $inc: { Balance: amount + fee } }
-      // );
 
       // Set transaction history
       const doc = {
-        // User: {
-        //   Name: user.Name,
-        //   Email: user.Email,
-        //   Phone: user.Phone,
-        //   Cashed_Out_Amount: amount,
-        //   Fee: fee,
-        //   time: new Date().toLocaleString(),
-        // },
-        // Agent: {
-        //   Name: agent.Name,
-        //   Email: agent.Email,
-        //   Phone: agent.Phone,
-        //   Received_Amount: amount + fee,
-        //   time: new Date().toLocaleString(),
-        // },
-
-          Name: user.Name,
-          Email: user.Email,
-          Agent:agent.Email,
-          Phone: user.Phone,
-          Cash_Outed_Amount: totalDeduction,
+        Name: user.Name,
+        Email: user.Email,
+        Agent: agent.Email,
+        Phone: user.Phone,
+        Cash_Outed_Amount: totalDeduction,
       };
 
       await requestCollection.insertOne(doc);
       res.send({ message: "Cash out request successful" });
     });
 
-    //Cash In Request
-    app.post("/cash-in", async (req,res)=>{
+    //Cash In
+    app.post("/cash-in", async (req, res) => {
       const info = req.body;
-     
+
       const user = await usersCollection.findOne({ Email: info.user?.Email });
 
       let agent;
@@ -287,20 +357,17 @@ async function run() {
       if (!isPinMatch) {
         return res.status(400).send({ message: "Invalid PIN" });
       }
-      const amount = parseFloat(info?.amount)
+      const amount = parseFloat(info?.amount);
       const doc = {
-        Name:info.user?.Name,
-        Email:info.user?.Email,
-        Phone:info.user?.Phone,
-        Requested_Amount:amount,
-      }
-      await requestCollection.insertOne(doc)
-      res.send({message:'Request send successful'})
-
-    })
-
-
-
+        Name: info.user?.Name,
+        Email: info.user?.Email,
+        Phone: info.user?.Phone,
+        Agent: agent?.Email,
+        Requested_Amount: amount,
+      };
+      await requestCollection.insertOne(doc);
+      res.send({ message: "Request send successful" });
+    });
 
     // Register User
     app.post("/register", async (req, res) => {
