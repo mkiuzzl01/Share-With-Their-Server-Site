@@ -79,16 +79,28 @@ async function run() {
     // All Transaction History
     app.get("/Transaction-History", verifyToken, async (req, res) => {
       const search = req.query.search;
+
       let query = {};
       if (search) {
         query = {
           Email: { $regex: search, $options: "i" },
         };
       }
-      const send_Money = await sendMoneyCollection.find(query).sort({time:-1}).toArray();
-      const cash_In = await cashInCollection.find(query).sort({time:-1}).toArray();
-      const cash_Out = await cashOutCollection.find(query).sort({time:-1}).toArray();
-      res.send([...send_Money, ...cash_In, ...cash_Out]);
+
+      const send_Money = await sendMoneyCollection
+        .find(query)
+        .sort({ time: -1 })
+        .toArray();
+      const cash_In = await cashInCollection
+        .find(query)
+        .sort({ time: -1 })
+        .toArray();
+      const cash_Out = await cashOutCollection
+        .find(query)
+        .sort({ time: -1 })
+        .toArray();
+      const result = send_Money.concat(cash_In, cash_Out);
+      res.send(result);
     });
 
     // Transaction History by Email
@@ -98,22 +110,25 @@ async function run() {
         const find = await usersCollection.findOne({ Email: email });
 
         let limit = 0;
-        if ((find.Role === "User")) {
+        if (find.Role === "User") {
           limit = 10;
         }
-        if ((find.Role === "Agent")) {
+        if (find.Role === "Agent") {
           limit = 20;
         }
 
         const send_Money = await sendMoneyCollection
-          .find({ Sender: email }).sort({time:-1})
+          .find({ Sender: email })
+          .sort({ time: -1 })
           .toArray();
         const cash_In = await cashInCollection
-          .find({ Receiver: email }).sort({time:-1})
+          .find({ Receiver: email })
+          .sort({ time: -1 })
           .toArray();
 
         const cash_out = await cashOutCollection
-          .find({ Sender: email }).sort({time:-1})
+          .find({ Sender: email })
+          .sort({ time: -1 })
           .toArray();
 
         const result = [...send_Money, ...cash_In, ...cash_out].splice(
@@ -130,7 +145,10 @@ async function run() {
     app.get("/Transaction-Management/:email", verifyToken, async (req, res) => {
       const { email } = req.params;
       const query = { Agent: email };
-      const result = await requestCollection.find(query).sort({time:-1}).toArray();
+      const result = await requestCollection
+        .find(query)
+        .sort({ time: -1 })
+        .toArray();
       res.send(result);
     });
     // ========================= All Patch Request ============================
