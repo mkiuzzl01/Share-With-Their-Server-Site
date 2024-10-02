@@ -1,4 +1,4 @@
-# Website Name: ShareWithThire
+# Website Name: ShareWithTheir
 
 ## Overview:
 This platform is a cutting-edge Transaction Management System, designed to facilitate seamless and secure financial transactions similar to industry leaders like Bkash or Nagod. It enables various transactions, including user-to-user, user-to-agent, and agent-to-agent transfers.
