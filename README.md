@@ -17,6 +17,9 @@ This platform is a cutting-edge Transaction Management System, designed to facil
 
 =>Authentication: MongoDB(Custome)
 
+## For Admin Role Access :
+Email : admin@gmail.com | Pass : 12345
+
 ## Follow the instructions if running this project on a local machine:
 => npm install
 
